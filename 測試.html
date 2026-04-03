@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>球球戰爭 – 聯機對戰版</title>
+<style>
+  :root { --bg:#05070b; --panel:rgba(12,16,24,.88); --line:rgba(255,255,255,.08); --txt:#eef5ff; }
+  html, body { margin:0; width:100%; height:100%; overflow:hidden; background: radial-gradient(circle at 50% 20%, #111b2d 0%, #05070b 58%, #020304 100%); font-family: system-ui, sans-serif; color: var(--txt); user-select:none; }
+  #stage { position: fixed; inset: 0; display:grid; place-items:center; }
+  canvas { width:min(100vw, calc(100vh * 1.8)); height:min(100vh, calc(100vw / 1.8)); border-radius:18px; box-shadow:0 30px 90px rgba(0,0,0,.55); background: #090d14; }
+  
+  /* 聯機選單樣式 */
+  #menu { position:fixed; inset:0; z-index:100; background:rgba(0,0,0,0.9); display:grid; place-items:center; }
+  .card { width:350px; background:#1a1f2b; padding:30px; border-radius:24px; text-align:center; border:1px solid #333; box-shadow: 0 0 20px rgba(66,216,255,0.2); }
+  h2 { margin-top:0; color:#42d8ff; }
+  input { width:80%; padding:12px; margin:15px 0; border-radius:10px; border:1px solid #444; background:#000; color:white; text-align:center; font-size:18px; }
+  .btn { width:90%; padding:12px; margin:8px 0; border-radius:12px; border:none; cursor:pointer; font-weight:bold; font-size:16px; transition: 0.2s; }
+  .blue { background: linear-gradient(135deg, #1f90ff, #4adfff); color:white; }
+  .green { background: linear-gradient(135deg, #1dcf7f, #74ff9c); color:white; }
+  .btn:hover { transform: scale(1.05); brightness: 1.2; }
+  #status { margin-top:10px; font-size:14px; color:#aaa; }
+</style>
+</head>
+<body>
+
+<div id="menu">
+  <div class="card" id="roomCard">
+    <h2>球球戰爭 聯機</h2>
+    <input type="text" id="roomInput" placeholder="輸入 4 位房間號">
+    <button class="btn blue" id="joinBtn">進入房間</button>
+    <div id="status">請輸入號碼與對手連線</div>
+  </div>
+
+  <div class="card" id="roleCard" style="display:none">
+    <h2>選擇角色</h2>
+    <button class="btn" style="background:#4adfff" id="pickBlue">Blue Mage (速度快)</button>
+    <button class="btn" style="background:#ff516f" id="pickRed">Red Knight (血量多)</button>
+    <p id="playerLabel" style="color:#42d8ff"></p>
+  </div>
+</div>
+
+<div id="stage"><canvas id="c" width="900" height="500"></canvas></div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+  import { getDatabase, ref, set, onValue, onDisconnect, update, push } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+
+  // --- 1. Firebase 配置 (已整合你的網址) ---
+  const firebaseConfig = {
+    apiKey: "AIzaSyD8l8YJMU1Pupj66qZG4LNMUC4sEEaDk-8",
+    authDomain: "shogig-4229a.firebaseapp.com",
+    databaseURL: "https://shogig-4229a-default-rtdb.firebaseio.com", 
+    projectId: "shogig-4229a",
+    storageBucket: "shogig-4229a.firebasestorage.app",
+    messagingSenderId: "943333196173",
+    appId: "1:943333196173:web:a74d48b2205948f4273dc4"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getDatabase(app);
+
+  // --- 遊戲變數 ---
+  const W=900, H=500;
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d');
+  let running = false, currentRoom = null, myId = null, opponentId = null;
+  let playerMain = null, enemyMain = null, bullets = [], keys = new Set();
+
+  const presets = {
+    blue: { color:'#4adfff', hp:100, speed:4, role:'blue' },
+    red:  { color:#ff516f', hp:130, speed:3, role:'red' }
+  };
+
+  // --- 2. 聯機核心邏輯 ---
+  function startConnecting(rid) {
+    currentRoom = rid;
+    const roomRef = ref(db, `rooms/${rid}`);
+    
+    onValue(roomRef, (snapshot) => {
+      const data = snapshot.val();
+      if (!myId) {
+        // 自動分配玩家1或玩家2
+        if (!data || !data.p1) myId = 'p1', opponentId = 'p2';
+        else if (!data.p2) myId = 'p2', opponentId = 'p1';
+        else { alert("房間已滿"); location.reload(); return; }
+        
+        onDisconnect(ref(db, `rooms/${rid}/${myId}`)).remove();
+        document.getElementById('roomCard').style.display = 'none';
+        document.getElementById('roleCard').style.display = 'block';
+        document.getElementById('playerLabel').innerText = `你是 ${myId === 'p1' ? '房主 (P1)' : '挑戰者 (P2)'}`;
+      }
+      
+      // 同步對手數據
+      if (data && data[opponentId]) {
+        const d = data[opponentId];
+        if (!enemyMain) enemyMain = { ...presets[d.role], x:d.x, y:d.y };
+        enemyMain.x = d.x; enemyMain.y = d.y; enemyMain.hp = d.hp;
+      }
+    });
+
+    // 監聽對手射擊事件
+    onValue(ref(db, `rooms/${rid}/shots`), (snapshot) => {
+      const shots = snapshot.val();
+      if (!shots) return;
+      Object.keys(shots).forEach(id => {
+        if (shots[id].owner === opponentId && !shots[id].done) {
+          createBullet(enemyMain, shots[id].tx, shots[id].ty);
+          update(ref(db, `rooms/${rid}/shots/${id}`), { done: true });
+        }
+      });
+    });
+  }
+
+  // --- 3. 遊戲引擎 ---
+  function createBullet(owner, tx, ty) {
+    if(!owner) return;
+    const dx = tx - owner.x, dy = ty - owner.y;
+    const ang = Math.atan2(dy, dx);
+    bullets.push({ x: owner.x, y: owner.y, vx: Math.cos(ang)*8, vy: Math.sin(ang)*8, color: owner.color, owner });
+  }
+
+  function gameLoop() {
+    if (running && playerMain) {
+      // WASD 移動
+      if(keys.has('KeyW')) playerMain.y -= playerMain.speed;
+      if(keys.has('KeyS')) playerMain.y += playerMain.speed;
+      if(keys.has('KeyA')) playerMain.x -= playerMain.speed;
+      if(keys.has('KeyD')) playerMain.x += playerMain.speed;
+
+      // 邊界限制
+      playerMain.x = Math.max(20, Math.min(W-20, playerMain.x));
+      playerMain.y = Math.max(20, Math.min(H-20, playerMain.y));
+
+      // 把我的位置傳給對手
+      update(ref(db, `rooms/${currentRoom}/${myId}`), {
+        x: playerMain.x, y: playerMain.y, hp: playerMain.hp, role: playerMain.role
+      });
+    }
+
+    // 畫布渲染
+    ctx.clearRect(0,0,W,H);
+    [playerMain, enemyMain].forEach(p => {
+      if(p && p.hp > 0) {
+        ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x, p.y, 20, 0, Math.PI*2); ctx.fill();
+        // 血條顯示
+        ctx.fillStyle = "white"; ctx.fillRect(p.x-20, p.y-35, 40, 5);
+        ctx.fillStyle = p.color; ctx.fillRect(p.x-20, p.y-35, (p.hp/100)*40, 5);
+      }
+    });
+
+    bullets.forEach((b, i) => {
+      b.x += b.vx; b.y += b.vy;
+      ctx.fillStyle = b.color; ctx.beginPath(); ctx.arc(b.x, b.y, 6, 0, Math.PI*2); ctx.fill();
+      
+      // 碰撞檢測 (只檢測自己被誰打到)
+      if (playerMain && b.owner === enemyMain) {
+          if (Math.hypot(b.x - playerMain.x, b.y - playerMain.y) < 25) {
+              playerMain.hp -= 5;
+              bullets.splice(i, 1);
+          }
+      }
+      if(b.x<0||b.x>W||b.y<0||b.y>H) bullets.splice(i,1);
+    });
+
+    requestAnimationFrame(gameLoop);
+  }
+
+  // --- 4. 事件綁定 ---
+  document.getElementById('joinBtn').onclick = () => {
+    const rid = document.getElementById('roomInput').value;
+    if(rid.length >= 1) startConnecting(rid);
+    else alert("請輸入房間號");
+  };
+  
+  const startBattle = (role) => {
+    playerMain = { ...presets[role], x: myId==='p1'?150:750, y:250 };
+    document.getElementById('menu').style.display = 'none';
+    running = true;
+  };
+  document.getElementById('pickBlue').onclick = () => startBattle('blue');
+  document.getElementById('pickRed').onclick = () => startBattle('red');
+
+  canvas.onclick = (e) => {
+    if(!running || playerMain.hp <= 0) return;
+    const rect = canvas.getBoundingClientRect();
+    const tx = (e.clientX - rect.left) * (W/rect.width);
+    const ty = (e.clientY - rect.top) * (H/rect.height);
+    createBullet(playerMain, tx, ty);
+    // 把射擊事件傳給對手
+    push(ref(db, `rooms/${currentRoom}/shots`), { owner: myId, tx, ty, done: false });
+  };
+
+  window.onkeydown = e => keys.add(e.code);
+  window.onkeyup = e => keys.delete(e.code);
+
+  gameLoop();
+</script>
+</body>
+</html>
