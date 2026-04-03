@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>球球戰爭 – 3人聯機對戰版</title>
+<style>
+  :root { --bg:#05070b; --panel:rgba(12,16,24,.88); --line:rgba(255,255,255,.08); --txt:#eef5ff; }
+  html, body { margin:0; width:100%; height:100%; overflow:hidden; background: radial-gradient(circle at 50% 20%, #111b2d 0%, #05070b 58%, #020304 100%); font-family: system-ui, sans-serif; color: var(--txt); user-select:none; }
+  #stage { position: fixed; inset: 0; display:grid; place-items:center; }
+  canvas { width:min(100vw, calc(100vh * 1.8)); height:min(100vh, calc(100vw / 1.8)); border-radius:18px; box-shadow:0 30px 90px rgba(0,0,0,.55); background: #090d14; border: 1px solid var(--line); }
+  
+  /* 聊天室 */
+  #chatBox { position: fixed; bottom: 20px; left: 20px; width: 280px; height: 180px; background: rgba(0,0,0,0.7); border: 1px solid var(--line); border-radius: 12px; display: none; flex-direction: column; z-index: 50; }
+  #messages { flex: 1; overflow-y: auto; padding: 10px; font-size: 13px; }
+  #chatInput { background: #000; border: none; border-top: 1px solid var(--line); color: #fff; padding: 10px; border-radius: 0 0 12px 12px; outline: none; }
+  .msg-p1 { color: #42d8ff; } .msg-p2 { color: #ff516f; } .msg-p3 { color: #4fff8d; }
+
+  /* HUD 血條 */
+  #hud { position:fixed; top:20px; left:20px; z-index:10; pointer-events:none; font-size:12px; }
+  .hp-wrap { margin-bottom: 8px; }
+  .hp-bar { width:180px; height:8px; background:#333; border-radius:4px; overflow:hidden; margin-top:3px; }
+  .hp-fill { height:100%; width: 100%; transition: width 0.2s; }
+
+  /* 選單 */
+  #menu { position:fixed; inset:0; z-index:100; background:rgba(0,0,0,0.9); display:grid; place-items:center; }
+  .card { width:340px; background:#1a1f2b; padding:35px; border-radius:24px; text-align:center; border: 1px solid #333; }
+  input { width:80%; padding:12px; margin:15px 0; border-radius:10px; border:1px solid #444; background:#000; color:white; text-align:center; font-size:18px; }
+  .btn { width:95%; padding:12px; margin:8px 0; border-radius:12px; border:none; cursor:pointer; font-weight:bold; font-size:16px; }
+  .blue { background: linear-gradient(135deg, #1f90ff, #4adfff); color:white; }
+</style>
+</head>
+<body>
+
+<div id="hud">
+  <div class="hp-wrap">P1 (Blue) <div class="hp-bar"><div id="hp-p1" class="hp-fill" style="background:#42d8ff"></div></div></div>
+  <div class="hp-wrap">P2 (Red) <div class="hp-bar"><div id="hp-p2" class="hp-fill" style="background:#ff516f"></div></div></div>
+  <div class="hp-wrap">P3 (Green) <div class="hp-bar"><div id="hp-p3" class="hp-fill" style="background:#4fff8d"></div></div></div>
+</div>
+
+<div id="chatBox">
+  <div id="messages"></div>
+  <input type="text" id="chatInput" placeholder="輸入訊息..." maxlength="40">
+</div>
+
+<div id="menu">
+  <div class="card" id="roomCard">
+    <h2>球球戰爭 3P</h2>
+    <input type="text" id="roomInput" placeholder="輸入房號">
+    <button class="btn blue" id="joinBtn">加入/創建房間</button>
+  </div>
+
+  <div class="card" id="roleCard" style="display:none">
+    <h2>選擇你的球</h2>
+    <button class="btn blue" onclick="start('blue')">Blue (速)</button>
+    <button class="btn" style="background:#ff516f; color:white" onclick="start('red')">Red (坦)</button>
+    <button class="btn" style="background:#4fff8d; color:black" onclick="start('green')">Green (均)</button>
+  </div>
+</div>
+
+<div id="stage"><canvas id="c" width="900" height="500"></canvas></div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+  import { getDatabase, ref, set, onValue, onDisconnect, update, push } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyD8l8YJMU1Pupj66qZG4LNMUC4sEEaDk-8",
+    authDomain: "shogig-4229a.firebaseapp.com",
+    databaseURL: "https://shogig-4229a-default-rtdb.firebaseio.com",
+    projectId: "shogig-4229a",
+    appId: "1:943333196173:web:a74d48b2205948f4273dc4"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getDatabase(app);
+
+  const W=900, H=500, canvas = document.getElementById('c'), ctx = canvas.getContext('2d');
+  let running = false, myRoom = null, myId = null;
+  let players = {}, bullets = [], keys = new Set();
+  
+  const chars = {
+    blue: { color:'#42d8ff', hp:100, spd:5 },
+    red:  { color:'#ff516f', hp:160, spd:3 },
+    green:{ color:'#4fff8d', hp:125, spd:4 }
+  };
+
+  function initRoom(rid) {
+    myRoom = rid;
+    const rRef = ref(db, `rooms/${rid}`);
+    onValue(rRef, (snap) => {
+      const data = snap.val() || {};
+      if (!myId) {
+        if (!data.p1) myId = 'p1';
+        else if (!data.p2) myId = 'p2';
+        else if (!data.p3) myId = 'p3';
+        else return alert("房間已滿(3人)");
+        onDisconnect(ref(db, `rooms/${rid}/${myId}`)).remove();
+        document.getElementById('roomCard').style.display='none';
+        document.getElementById('roleCard').style.display='block';
+      }
+      // 同步所有人位置與血量
+      players = data;
+      ['p1','p2','p3'].forEach(id => {
+        const fill = document.getElementById(`hp-${id}`);
+        if(data[id]) fill.style.width = (data[id].hp / chars[data[id].role].hp * 100) + '%';
+        else fill.style.width = '0%';
+      });
+    });
+
+    onValue(ref(db, `rooms/${rid}/chat`), (snap) => {
+      const mDiv = document.getElementById('messages');
+      mDiv.innerHTML = '';
+      const msgs = snap.val();
+      if(msgs) Object.keys(msgs).forEach(k => {
+        mDiv.innerHTML += `<div><span class="msg-${msgs[k].u}">${msgs[k].u}:</span> ${msgs[k].t}</div>`;
+      });
+      mDiv.scrollTop = mDiv.scrollHeight;
+    });
+
+    onValue(ref(db, `rooms/${rid}/b`), (snap) => {
+      const bts = snap.val(); if (!bts) return;
+      Object.keys(bts).forEach(id => {
+        if (bts[id].o !== myId && !bts[id].d) {
+          createBullet(players[bts[id].o], bts[id].tx, bts[id].ty, false);
+          update(ref(db, `rooms/${rid}/b/${id}`), { d: true });
+        }
+      });
+    });
+  }
+
+  function createBullet(o, tx, ty, sync=true) {
+    if (!o || o.hp <= 0) return;
+    const ang = Math.atan2(ty - o.y, tx - o.x);
+    bullets.push({ x:o.x, y:o.y, vx:Math.cos(ang)*7, vy:Math.sin(ang)*7, c:chars[o.role].color, oId: o.id });
+    if (sync) push(ref(db, `rooms/${myRoom}/b`), { o:myId, tx, ty, d:false });
+  }
+
+  window.start = (role) => {
+    const startX = myId==='p1'?100 : myId==='p2'?800 : 450;
+    const startY = myId==='p3'?400 : 250;
+    const myData = { id:myId, x:startX, y:startY, hp:chars[role].hp, role:role };
+    update(ref(db, `rooms/${myRoom}/${myId}`), myData);
+    document.getElementById('menu').style.display='none';
+    document.getElementById('chatBox').style.display='flex';
+    running = true;
+  };
+
+  function loop() {
+    if (running && players[myId]) {
+      let me = players[myId];
+      if(keys.has('KeyW')) me.y -= chars[me.role].spd;
+      if(keys.has('KeyS')) me.y += chars[me.role].spd;
+      if(keys.has('KeyA')) me.x -= chars[me.role].spd;
+      if(keys.has('KeyD')) me.x += chars[me.role].spd;
+      me.x = Math.max(20, Math.min(W-20, me.x));
+      me.y = Math.max(20, Math.min(H-20, me.y));
+      update(ref(db, `rooms/${myRoom}/${myId}`), { x:me.x, y:me.y, hp:me.hp });
+    }
+
+    ctx.fillStyle = '#090d14'; ctx.fillRect(0,0,W,H);
+    Object.values(players).forEach(p => {
+      if (p.hp > 0 && p.role) {
+        ctx.fillStyle = chars[p.role].color; ctx.beginPath(); ctx.arc(p.x, p.y, 20, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = "white"; ctx.fillText(p.id, p.x-10, p.y-30);
+      }
+    });
+
+    bullets.forEach((b, i) => {
+      b.x += b.vx; b.y += b.vy;
+      ctx.fillStyle = b.c; ctx.beginPath(); ctx.arc(b.x, b.y, 5, 0, Math.PI*2); ctx.fill();
+      // 碰撞偵測：如果子彈打到「我」
+      if (running && players[myId] && b.oId !== myId) {
+        let me = players[myId];
+        if (Math.hypot(b.x-me.x, b.y-me.y) < 25) {
+          me.hp -= 5; bullets.splice(i,1);
+          if (me.hp <= 0) { alert("你被擊敗了！"); location.reload(); }
+        }
+      }
+      if (b.x<0||b.x>W||b.y<0||b.y>H) bullets.splice(i,1);
+    });
+    requestAnimationFrame(loop);
+  }
+
+  document.getElementById('joinBtn').onclick = () => {
+    const rid = document.getElementById('roomInput').value;
+    if(rid) initRoom(rid);
+  };
+
+  document.getElementById('chatInput').onkeydown = (e) => {
+    if (e.key === 'Enter' && e.target.value.trim()) {
+      push(ref(db, `rooms/${myRoom}/chat`), { u: myId, t: e.target.value });
+      e.target.value = '';
+    }
+    e.stopPropagation();
+  };
+
+  canvas.onclick = (e) => {
+    if (!running || players[myId].hp <= 0) return;
+    const r = canvas.getBoundingClientRect();
+    createBullet(players[myId], (e.clientX-r.left)*(W/r.width), (e.clientY-r.top)*(H/r.height));
+  };
+  window.onkeydown=e=>keys.add(e.code); window.onkeyup=e=>keys.delete(e.code);
+  loop();
+</script>
+</body>
+</html>
