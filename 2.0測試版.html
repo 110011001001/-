@@ -1,0 +1,1118 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Shorts Battle – Mode Select</title>
+<style>
+  :root{
+    --bg:#05070b;
+    --panel:rgba(12,16,24,.88);
+    --line:rgba(255,255,255,.08);
+    --txt:#eef5ff;
+  }
+  html, body {
+    margin:0;
+    width:100%;
+    height:100%;
+    overflow:hidden;
+    background: radial-gradient(circle at 50% 20%, #111b2d 0%, #05070b 58%, #020304 100%);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans TC", sans-serif;
+    color: var(--txt);
+    user-select:none;
+  }
+  #stage {
+    position: fixed;
+    inset: 0;
+    display:grid;
+    place-items:center;
+  }
+  canvas{
+    width:min(100vw, calc(100vh * 1.8));
+    height:min(100vh, calc(100vw / 1.8));
+    max-width:100vw;
+    max-height:100vh;
+    border-radius:18px;
+    box-shadow:0 30px 90px rgba(0,0,0,.55);
+    background: linear-gradient(180deg, #121826 0%, #090d14 100%);
+  }
+  #hud{
+    position:fixed;
+    left:16px;
+    top:16px;
+    z-index:4;
+    min-width:270px;
+    display:grid;
+    gap:10px;
+    pointer-events:none;
+  }
+  .barWrap{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:14px;
+    padding:10px 12px;
+    box-shadow:0 10px 30px rgba(0,0,0,.25);
+    backdrop-filter: blur(8px);
+  }
+  .barLabel{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    font-size:13px;
+    margin-bottom:6px;
+  }
+  .bar{
+    width:100%;
+    height:14px;
+    background:rgba(255,255,255,.08);
+    border-radius:999px;
+    overflow:hidden;
+  }
+  .fill{
+    height:100%;
+    width:100%;
+    border-radius:999px;
+    transition:width .08s linear;
+  }
+  .playerFill{ background:linear-gradient(90deg, #42d8ff, #9df4ff); }
+  .enemyFill{ background:linear-gradient(90deg, #ff516f, #ff9b6e); }
+
+  #tips{
+    position:fixed;
+    right:16px;
+    top:16px;
+    z-index:4;
+    max-width:300px;
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:14px;
+    padding:12px 14px;
+    box-shadow:0 10px 30px rgba(0,0,0,.25);
+    backdrop-filter: blur(8px);
+    font-size:13px;
+    line-height:1.5;
+  }
+  #menu{
+    position:fixed;
+    inset:0;
+    z-index:10;
+    background:rgba(0,0,0,.72);
+    display:grid;
+    place-items:center;
+  }
+  .card{
+    width:min(92vw, 520px);
+    background:rgba(10,14,22,.96);
+    border:1px solid rgba(255,255,255,.08);
+    border-radius:24px;
+    padding:26px;
+    box-shadow:0 24px 80px rgba(0,0,0,.5);
+  }
+  .title{
+    font-size:30px;
+    font-weight:900;
+    margin-bottom:8px;
+  }
+  .sub{
+    font-size:14px;
+    line-height:1.65;
+    opacity:.86;
+    margin-bottom:16px;
+  }
+  .section{
+    margin-top:14px;
+    font-size:13px;
+    opacity:.9;
+    font-weight:800;
+  }
+  .grid{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:10px;
+    margin-top:10px;
+  }
+  .btn{
+    border:0;
+    border-radius:16px;
+    padding:14px 12px;
+    cursor:pointer;
+    color:white;
+    font-weight:800;
+    font-size:15px;
+    min-height:62px;
+    transition:transform .12s ease, filter .12s ease, outline .12s ease;
+  }
+  .btn:hover{ transform:translateY(-1px) scale(1.01); filter:brightness(1.05); }
+  .btn.blue{ background:linear-gradient(135deg, #1f90ff, #4adfff); }
+  .btn.red{ background:linear-gradient(135deg, #ff3e62, #ff8b56); }
+  .btn.green{ background:linear-gradient(135deg, #1dcf7f, #74ff9c); }
+  .btn.purple{ background:linear-gradient(135deg, #8b5dff, #cf7eff); }
+  .btn.gray{ background:linear-gradient(135deg, #3b4255, #232937); }
+
+  .small{
+    font-size:12px;
+    opacity:.74;
+    margin-top:14px;
+    line-height:1.55;
+  }
+  #overlay{
+    position:fixed;
+    inset:0;
+    display:none;
+    place-items:center;
+    pointer-events:none;
+    z-index:6;
+  }
+  #bigMsg{
+    font-size:clamp(34px, 6vw, 72px);
+    font-weight:900;
+    letter-spacing:1px;
+    text-shadow:0 0 16px rgba(255,255,255,.35), 0 10px 28px rgba(0,0,0,.85);
+  }
+  .kbd{
+    display:inline-block;
+    padding:1px 7px;
+    border:1px solid rgba(255,255,255,.18);
+    border-bottom-width:3px;
+    border-radius:7px;
+    background:rgba(255,255,255,.06);
+    font-size:12px;
+    margin:0 2px;
+  }
+  #restartBtn{
+    position:fixed;
+    left:50%;
+    bottom:18px;
+    transform:translateX(-50%);
+    z-index:12;
+    display:none;
+    border:0;
+    border-radius:16px;
+    padding:12px 18px;
+    cursor:pointer;
+    color:white;
+    font-weight:900;
+    font-size:15px;
+    background:linear-gradient(135deg, #3b4255, #232937);
+    box-shadow:0 12px 30px rgba(0,0,0,.35);
+  }
+  #restartBtn:hover{ filter:brightness(1.06); }
+  .modePicked{
+    outline:2px solid rgba(255,255,255,.45) !important;
+  }
+</style>
+</head>
+<body>
+<div id="hud">
+  <div class="barWrap">
+    <div class="barLabel"><span id="playerLabel">Player</span><span id="playerHpText">0 / 0</span></div>
+    <div class="bar"><div id="playerHpBar" class="fill playerFill"></div></div>
+  </div>
+  <div class="barWrap">
+    <div class="barLabel"><span id="enemyLabel">Enemy</span><span id="enemyHpText">0 / 0</span></div>
+    <div class="bar"><div id="enemyHpBar" class="fill enemyFill"></div></div>
+  </div>
+</div>
+
+<div id="tips">
+  <div style="font-weight:900;margin-bottom:6px;">操作</div>
+  <div>
+    <span class="kbd">WASD</span> 移動<br>
+    <span class="kbd">Space</span> 射擊<br>
+    <span class="kbd">Shift</span> 衝刺<br>
+    滑鼠就是你的瞄準方向。
+  </div>
+</div>
+
+<button id="restartBtn">重新開始</button>
+
+<div id="overlay"><div id="bigMsg">GAME OVER</div></div>
+
+<div id="menu">
+  <div class="card">
+    <div class="title">Shorts Battle</div>
+    <div class="sub">
+      先選模式，再選角色。<br>
+      紅色子彈會變大且傷害 7，藍色速度更快，綠色是吸血彈，紫色是魔法彈。
+    </div>
+
+    <div class="section">先選模式</div>
+    <div class="grid">
+      <button class="btn gray" data-mode="solo">單挑模式 1v1</button>
+      <button class="btn gray" data-mode="team">隊友模式 2v2</button>
+    </div>
+    <div id="modeSummary" class="small">請先選擇一個模式。</div>
+
+    <div id="roleSection" style="display:none;">
+      <div class="section">再選你的角色</div>
+      <div class="grid">
+        <button class="btn blue" data-pick="blue">Blue Mage</button>
+        <button class="btn red" data-pick="red">Red Knight</button>
+        <button class="btn green" data-pick="green">Green Vampire</button>
+        <button class="btn purple" data-pick="purple">Purple Mage</button>
+      </div>
+
+      <div class="grid" style="margin-top:14px;">
+        <button class="btn gray" id="startBtn" disabled>開始遊戲</button>
+        <button class="btn gray" id="clearBtn">重選模式</button>
+      </div>
+
+      <div class="small">
+        隊友模式下，你和 AI 隊友會一起打，對面也會有一個 AI 隊友。<br>
+        敵人 AI 會追擊、預判、閃避子彈，低血量時會更兇。
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="stage">
+  <canvas id="c" width="900" height="500"></canvas>
+</div>
+
+<script>
+(() => {
+  const W = 900, H = 500;
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d');
+
+  const menu = document.getElementById('menu');
+  const startBtn = document.getElementById('startBtn');
+  const clearBtn = document.getElementById('clearBtn');
+  const restartBtn = document.getElementById('restartBtn');
+  const overlay = document.getElementById('overlay');
+  const bigMsg = document.getElementById('bigMsg');
+  const tips = document.getElementById('tips');
+  const roleSection = document.getElementById('roleSection');
+  const modeSummary = document.getElementById('modeSummary');
+
+  const playerLabel = document.getElementById('playerLabel');
+  const enemyLabel = document.getElementById('enemyLabel');
+  const playerHpBar = document.getElementById('playerHpBar');
+  const enemyHpBar = document.getElementById('enemyHpBar');
+  const playerHpText = document.getElementById('playerHpText');
+  const enemyHpText = document.getElementById('enemyHpText');
+
+  const keys = new Set();
+  let mouse = { x: W * 0.5, y: H * 0.5 };
+
+  const presets = {
+    blue:   { name:'Blue Mage',     color:'#4adfff', hp:100, speed:3.15, shotCd:20, dashPower:9.4, role:'blue' },
+    red:    { name:'Red Knight',    color:'#ff516f', hp:110, speed:2.8,  shotCd:24, dashPower:8.8, role:'red' },
+    green:  { name:'Green Vampire', color:'#5cff8f', hp:105, speed:2.95, shotCd:22, dashPower:8.9, role:'green' },
+    purple: { name:'Purple Mage',   color:'#b07cff', hp:95,  speed:3.0,  shotCd:21, dashPower:9.0, role:'purple' }
+  };
+
+  let selectedKey = null;
+  let selectedMode = null; // 'solo' | 'team'
+  let running = false;
+  let gameOver = false;
+  let shake = 0;
+
+  let playerMain = null;
+  let enemyMain = null;
+  let playerTeam = [];
+  let enemyTeam = [];
+  let bullets = [];
+  let particles = [];
+  let trails = [];
+
+  function rand(min, max){ return Math.random() * (max - min) + min; }
+  function clamp(v, min, max){ return Math.max(min, Math.min(max, v)); }
+  function dist(x1, y1, x2, y2){ return Math.hypot(x1-x2, y1-y2); }
+  function circleHit(a, b){ return dist(a.x, a.y, b.x, b.y) <= (a.r + b.r); }
+  function alive(team){ return team.filter(f => f.hp > 0); }
+
+  function makeFighter(preset, x, y, team, controlled=false, isLeader=false){
+    return {
+      x, y, vx:0, vy:0,
+      r:18,
+      hp:preset.hp,
+      maxHp:preset.hp,
+      color:preset.color,
+      name:preset.name,
+      speedBase:preset.speed,
+      shotCdBase:preset.shotCd,
+      dashPower:preset.dashPower,
+      role:preset.role,
+      cd:0,
+      dashCd:0,
+      dashTime:0,
+      invuln:0,
+      aiBurst:0,
+      team,
+      controlled,
+      isLeader
+    };
+  }
+
+  function pickPreset(excludeKey = null){
+    const keys = Object.keys(presets).filter(k => k !== excludeKey);
+    const key = keys[Math.floor(Math.random() * keys.length)];
+    return presets[key];
+  }
+
+  function getBulletSpeed(role){
+    if(role === 'red') return 5.5;
+    if(role === 'blue') return 7.4;
+    if(role === 'green') return 6.1;
+    return 5.8;
+  }
+
+  function teamStats(team){
+    const members = team.filter(f => f.maxHp > 0);
+    const current = members.reduce((s, f) => s + Math.max(0, f.hp), 0);
+    const max = members.reduce((s, f) => s + f.maxHp, 0) || 1;
+    return { current, max, alive: alive(team).length, total: team.length };
+  }
+
+  function updateHud(){
+    if(selectedMode === 'team' && playerTeam.length && enemyTeam.length){
+      const p = teamStats(playerTeam);
+      const e = teamStats(enemyTeam);
+      playerLabel.textContent = `Player Team (${p.alive}/${p.total})`;
+      enemyLabel.textContent = `Enemy Team (${e.alive}/${e.total})`;
+      playerHpText.textContent = `${Math.max(0, Math.round(p.current))} / ${p.max}`;
+      enemyHpText.textContent = `${Math.max(0, Math.round(e.current))} / ${e.max}`;
+      playerHpBar.style.width = (clamp(p.current / p.max, 0, 1) * 100).toFixed(1) + '%';
+      enemyHpBar.style.width = (clamp(e.current / e.max, 0, 1) * 100).toFixed(1) + '%';
+    } else if(playerMain && enemyMain && selectedMode === 'solo'){
+      playerLabel.textContent = playerMain.name;
+      enemyLabel.textContent = enemyMain.name;
+      playerHpText.textContent = `${Math.max(0, Math.round(playerMain.hp))} / ${playerMain.maxHp}`;
+      enemyHpText.textContent = `${Math.max(0, Math.round(enemyMain.hp))} / ${enemyMain.maxHp}`;
+      playerHpBar.style.width = (clamp(playerMain.hp / playerMain.maxHp, 0, 1) * 100).toFixed(1) + '%';
+      enemyHpBar.style.width = (clamp(enemyMain.hp / enemyMain.maxHp, 0, 1) * 100).toFixed(1) + '%';
+    } else {
+      playerLabel.textContent = 'Player';
+      enemyLabel.textContent = 'Enemy';
+      playerHpText.textContent = '0 / 0';
+      enemyHpText.textContent = '0 / 0';
+      playerHpBar.style.width = '0%';
+      enemyHpBar.style.width = '0%';
+    }
+  }
+
+  function resetGame(){
+    bullets = [];
+    particles = [];
+    trails = [];
+    shake = 0;
+    gameOver = false;
+
+    const playerPreset = presets[selectedKey];
+    const enemyPreset = pickPreset(selectedKey);
+
+    if(selectedMode === 'team'){
+      const playerAllyPreset = pickPreset(selectedKey);
+      const enemyAllyPreset = pickPreset(selectedKey);
+
+      playerMain = makeFighter(playerPreset, 170, H/2, 'player', true, true);
+      const playerAlly = makeFighter(playerAllyPreset, 112, H/2 + 92, 'player', false, false);
+
+      enemyMain = makeFighter(enemyPreset, W - 170, H/2, 'enemy', false, true);
+      const enemyAlly = makeFighter(enemyAllyPreset, W - 112, H/2 - 92, 'enemy', false, false);
+
+      playerTeam = [playerMain, playerAlly];
+      enemyTeam = [enemyMain, enemyAlly];
+    } else {
+      playerMain = makeFighter(playerPreset, 180, H/2, 'player', true, true);
+      enemyMain = makeFighter(enemyPreset, W - 180, H/2, 'enemy', false, true);
+
+      playerTeam = [playerMain];
+      enemyTeam = [enemyMain];
+    }
+
+    overlay.style.display = 'none';
+    restartBtn.style.display = 'none';
+    updateHud();
+  }
+
+  function showMenuForModeSelection(){
+    menu.style.display = 'grid';
+    tips.style.display = 'block';
+    roleSection.style.display = 'none';
+    modeSummary.textContent = '請先選擇一個模式。';
+    startBtn.disabled = true;
+    selectedMode = null;
+    selectedKey = null;
+    document.querySelectorAll('[data-mode]').forEach(btn => btn.classList.remove('modePicked'));
+    document.querySelectorAll('[data-pick]').forEach(btn => btn.style.outline = 'none');
+    startBtn.textContent = '開始遊戲';
+    updateHud();
+  }
+
+  function updateStartButton(){
+    startBtn.disabled = !(selectedMode && selectedKey);
+    startBtn.textContent = selectedMode === 'team' ? '開始隊友模式' : '開始單挑模式';
+  }
+
+  function startGame(){
+    if(!selectedMode || !selectedKey) return;
+    menu.style.display = 'none';
+    tips.style.display = 'none';
+    resetGame();
+    running = true;
+  }
+
+  function endGame(text){
+    gameOver = true;
+    bigMsg.textContent = text;
+    overlay.style.display = 'grid';
+    restartBtn.style.display = 'inline-block';
+  }
+
+  function addParticles(x, y, color, count=12, power=3, life=22){
+    for(let i=0;i<count;i++){
+      const a = rand(0, Math.PI*2);
+      const s = rand(power*0.25, power);
+      particles.push({
+        x, y,
+        vx: Math.cos(a) * s,
+        vy: Math.sin(a) * s,
+        life: life + rand(-5, 5),
+        maxLife: life + rand(-5, 5),
+        size: rand(1.4, 3.5),
+        color
+      });
+    }
+  }
+
+  function screenShake(amount){
+    shake = Math.max(shake, amount);
+  }
+
+  function applyExplosion(x, y, color){
+    screenShake(8);
+    addParticles(x, y, color, 20, 4.8, 26);
+  }
+
+  function shoot(shooter, aimPoint){
+    if(shooter.cd > 0 || gameOver || shooter.hp <= 0) return;
+
+    const dx = aimPoint.x - shooter.x;
+    const dy = aimPoint.y - shooter.y;
+    const d = Math.max(0.001, Math.hypot(dx, dy));
+
+    const bullet = {
+      x: shooter.x + (dx/d) * (shooter.r + 8),
+      y: shooter.y + (dy/d) * (shooter.r + 8),
+      vx: 0,
+      vy: 0,
+      r: 5,
+      color: shooter.color,
+      owner: shooter,
+      life: 120,
+      bounce: 2,
+      damage: 4,
+      role: shooter.role
+    };
+
+    if(shooter.role === 'red'){
+      bullet.r = 9;
+      bullet.damage = 7;
+      bullet.vx = (dx/d) * 5.5;
+      bullet.vy = (dy/d) * 5.5;
+    } else if(shooter.role === 'blue'){
+      bullet.r = 5;
+      bullet.damage = 4;
+      bullet.vx = (dx/d) * 7.4;
+      bullet.vy = (dy/d) * 7.4;
+    } else if(shooter.role === 'green'){
+      bullet.r = 6;
+      bullet.damage = 3;
+      bullet.healAmount = 3;
+      bullet.vx = (dx/d) * 6.1;
+      bullet.vy = (dy/d) * 6.1;
+    } else if(shooter.role === 'purple'){
+      bullet.r = 6;
+      bullet.damage = 5;
+      bullet.vx = (dx/d) * 5.8;
+      bullet.vy = (dy/d) * 5.8;
+      bullet.phase = rand(0, Math.PI*2);
+    }
+
+    bullets.push(bullet);
+    shooter.cd = shooter.shotCdBase;
+    addParticles(bullet.x, bullet.y, shooter.color, 6, 2.0, 14);
+  }
+
+  function predictLead(shooter, target, bulletSpeed, leadBias = 1){
+    const dx = target.x - shooter.x;
+    const dy = target.y - shooter.y;
+    const distNow = Math.hypot(dx, dy);
+    const t = clamp(distNow / Math.max(0.001, bulletSpeed), 0, 28) * leadBias;
+    return {
+      x: target.x + (target.vx || 0) * t,
+      y: target.y + (target.vy || 0) * t
+    };
+  }
+
+  function bulletThreatScore(bullet, target){
+    const rx = target.x - bullet.x;
+    const ry = target.y - bullet.y;
+    const distNow = Math.hypot(rx, ry);
+    const speed = Math.hypot(bullet.vx, bullet.vy) || 0.001;
+    const dir = (rx * bullet.vx + ry * bullet.vy) / (distNow * speed);
+    return { distNow, dir };
+  }
+
+  function chooseTarget(attacker, enemies){
+    const list = alive(enemies);
+    if(!list.length) return null;
+
+    let best = list[0];
+    let bestScore = Infinity;
+
+    for(const e of list){
+      const d = dist(attacker.x, attacker.y, e.x, e.y);
+      const hpFactor = Math.max(0, e.hp) * 7.5;
+      const score = hpFactor + d * 0.9;
+      if(score < bestScore){
+        bestScore = score;
+        best = e;
+      }
+    }
+    return best;
+  }
+
+  function chooseAnchor(fighter, friends){
+    const list = alive(friends).filter(f => f !== fighter);
+    if(!list.length) return null;
+
+    let best = list[0];
+    let bestDist = Infinity;
+    for(const f of list){
+      const d = dist(fighter.x, fighter.y, f.x, f.y);
+      if(d < bestDist){
+        bestDist = d;
+        best = f;
+      }
+    }
+    return best;
+  }
+
+  function updatePlayerControlled(){
+    const p = playerMain;
+    if(!p || p.hp <= 0) return;
+
+    const spd = p.dashTime > 0 ? 5.8 : p.speedBase;
+    let ax = 0, ay = 0;
+
+    if(keys.has('KeyW')) ay -= 1;
+    if(keys.has('KeyS')) ay += 1;
+    if(keys.has('KeyA')) ax -= 1;
+    if(keys.has('KeyD')) ax += 1;
+
+    const len = Math.max(0.001, Math.hypot(ax, ay));
+    if(ax || ay){
+      p.vx += (ax/len) * spd * 0.34;
+      p.vy += (ay/len) * spd * 0.34;
+    }
+
+    if(keys.has('ShiftLeft') && p.dashCd <= 0 && p.dashTime <= 0){
+      const dx = mouse.x - p.x;
+      const dy = mouse.y - p.y;
+      const d = Math.max(0.001, Math.hypot(dx, dy));
+      p.vx += (dx/d) * p.dashPower;
+      p.vy += (dy/d) * p.dashPower;
+      p.dashTime = 10;
+      p.dashCd = 58;
+      p.invuln = 10;
+      addParticles(p.x, p.y, '#ffffff', 12, 2.8, 16);
+      screenShake(4);
+    }
+
+    if(keys.has('Space') && p.cd <= 0){
+      shoot(p, { x: mouse.x, y: mouse.y });
+    }
+
+    if(p.cd > 0) p.cd--;
+    if(p.dashCd > 0) p.dashCd--;
+    if(p.dashTime > 0) p.dashTime--;
+    if(p.invuln > 0) p.invuln--;
+
+    p.vx *= 0.93;
+    p.vy *= 0.93;
+  }
+
+  function updateAI(fighter, enemySide, friendSide){
+    if(fighter.hp <= 0) return;
+
+    const target = chooseTarget(fighter, enemySide);
+    if(!target) return;
+
+    const bulletSpeed = getBulletSpeed(fighter.role);
+    const lowHpMode = fighter.hp < fighter.maxHp * 0.38;
+    const leadBias = lowHpMode ? 1.18 : 1.02;
+    const aim = predictLead(fighter, target, bulletSpeed, leadBias);
+
+    let moveX = 0, moveY = 0;
+    const dx = target.x - fighter.x;
+    const dy = target.y - fighter.y;
+    const d = Math.max(0.001, Math.hypot(dx, dy));
+
+    const toTargetX = dx / d;
+    const toTargetY = dy / d;
+    const awayX = -toTargetX;
+    const awayY = -toTargetY;
+    const strafeX = -toTargetY;
+    const strafeY = toTargetX;
+
+    const t = performance.now() * 0.001;
+    const orbit = Math.sin(t * 4.3 + fighter.x * 0.01) * 0.95;
+    const jitter = Math.sin(t * 9.2 + fighter.y * 0.017) * 0.08;
+
+    const roleIdeal =
+      fighter.role === 'blue' ? 205 :
+      fighter.role === 'red' ? 165 :
+      fighter.role === 'purple' ? 190 : 180;
+
+    const idealRange = lowHpMode ? 265 : roleIdeal;
+    const rangeError = d - idealRange;
+
+    if(d > idealRange + 35){
+      moveX += toTargetX * clamp(rangeError / 110, 0, 1) * 1.25;
+      moveY += toTargetY * clamp(rangeError / 110, 0, 1) * 1.25;
+    } else if(d < idealRange - 30){
+      moveX += awayX * clamp((-rangeError) / 110, 0, 1) * 1.15;
+      moveY += awayY * clamp((-rangeError) / 110, 0, 1) * 1.15;
+    }
+
+    moveX += strafeX * orbit;
+    moveY += strafeY * orbit;
+
+    if(d < 115){
+      moveX += awayX * (lowHpMode ? 1.9 : 1.45);
+      moveY += awayY * (lowHpMode ? 1.9 : 1.45);
+    }
+
+    const anchor = chooseAnchor(fighter, friendSide);
+    if(anchor){
+      const ax = anchor.x - fighter.x;
+      const ay = anchor.y - fighter.y;
+      const ad = Math.max(0.001, Math.hypot(ax, ay));
+      const supportIdeal = lowHpMode ? 200 : 145;
+
+      if(ad > supportIdeal + 30){
+        moveX += (ax / ad) * 0.65;
+        moveY += (ay / ad) * 0.65;
+      } else if(ad < 85){
+        moveX -= (ax / ad) * 0.5;
+        moveY -= (ay / ad) * 0.5;
+      }
+    }
+
+    let nearestThreat = null;
+    let nearestThreatDist = 9999;
+
+    for(const b of bullets){
+      if(b.owner.team === fighter.team) continue;
+      const s = bulletThreatScore(b, fighter);
+      if(s.distNow < nearestThreatDist){
+        nearestThreatDist = s.distNow;
+        nearestThreat = b;
+      }
+    }
+
+    if(nearestThreat && nearestThreatDist < (lowHpMode ? 240 : 190)){
+      const bv = Math.hypot(nearestThreat.vx, nearestThreat.vy) || 1;
+      const bx = nearestThreat.vx / bv;
+      const by = nearestThreat.vy / bv;
+
+      const rx = fighter.x - nearestThreat.x;
+      const ry = fighter.y - nearestThreat.y;
+      const rxn = Math.hypot(rx, ry) || 1;
+      const awayFromBulletX = rx / rxn;
+      const awayFromBulletY = ry / rxn;
+      const perpX = -by;
+      const perpY = bx;
+
+      const dodgeWeight = clamp((220 - nearestThreatDist) / 220, 0.15, 1);
+      moveX += (awayFromBulletX * 1.6 + perpX * 1.2) * dodgeWeight;
+      moveY += (awayFromBulletY * 1.6 + perpY * 1.2) * dodgeWeight;
+
+      if(fighter.dashCd <= 0 && fighter.dashTime <= 0 && nearestThreatDist < (lowHpMode ? 220 : 170)){
+        let dashX = awayFromBulletX * 0.8 + perpX * 0.9;
+        let dashY = awayFromBulletY * 0.8 + perpY * 0.9;
+        const dl = Math.hypot(dashX, dashY) || 1;
+        dashX /= dl;
+        dashY /= dl;
+
+        fighter.vx += dashX * fighter.dashPower * (lowHpMode ? 1.05 : 0.88);
+        fighter.vy += dashY * fighter.dashPower * (lowHpMode ? 1.05 : 0.88);
+        fighter.dashTime = lowHpMode ? 10 : 8;
+        fighter.dashCd = lowHpMode ? 48 : 62;
+        fighter.invuln = lowHpMode ? 10 : 8;
+        addParticles(fighter.x, fighter.y, fighter.color, 10, 2.4, 16);
+        screenShake(2);
+      }
+    }
+
+    moveX += Math.cos(t * 3.2 + fighter.y * 0.02) * 0.14;
+    moveY += Math.sin(t * 3.8 + fighter.x * 0.02) * 0.14;
+
+    if(lowHpMode){
+      moveX += strafeX * 0.22;
+      moveY += strafeY * 0.22;
+    }
+
+    fighter.vx += (moveX + jitter) * (lowHpMode ? 0.44 : 0.36);
+    fighter.vy += (moveY - jitter) * (lowHpMode ? 0.44 : 0.36);
+
+    fighter.aiBurst++;
+
+    const shootReady = fighter.cd <= 0 && d < (lowHpMode ? 650 : 560);
+    const burstWindow = fighter.aiBurst > (lowHpMode ? 14 : 24);
+    const closePressure = d < (lowHpMode ? 370 : 300);
+    const shouldShoot = shootReady && (closePressure || burstWindow || Math.random() < 0.03);
+
+    if(shouldShoot){
+      shoot(fighter, aim);
+      fighter.aiBurst = 0;
+    }
+
+    if(fighter.cd > 0) fighter.cd--;
+    if(fighter.dashCd > 0) fighter.dashCd--;
+    if(fighter.dashTime > 0) fighter.dashTime--;
+    if(fighter.invuln > 0) fighter.invuln--;
+
+    fighter.vx *= lowHpMode ? 0.948 : 0.935;
+    fighter.vy *= lowHpMode ? 0.948 : 0.935;
+  }
+
+  function updateFighterPhysics(f){
+    if(f.hp <= 0) return;
+
+    const maxSpeed = f.dashTime > 0 ? 9.4 : 4.2;
+    const s = Math.hypot(f.vx, f.vy);
+    if(s > maxSpeed){
+      f.vx = (f.vx / s) * maxSpeed;
+      f.vy = (f.vy / s) * maxSpeed;
+    }
+
+    f.x += f.vx;
+    f.y += f.vy;
+
+    const pad = f.r + 6;
+    if(f.x < pad){ f.x = pad; f.vx *= -0.6; }
+    if(f.x > W - pad){ f.x = W - pad; f.vx *= -0.6; }
+    if(f.y < pad){ f.y = pad; f.vy *= -0.6; }
+    if(f.y > H - pad){ f.y = H - pad; f.vy *= -0.6; }
+
+    f.vx *= 0.985;
+    f.vy *= 0.985;
+  }
+
+  function updateBullets(){
+    for(let i = bullets.length - 1; i >= 0; i--){
+      const b = bullets[i];
+      b.life--;
+
+      if(b.role === 'purple'){
+        b.phase += 0.18;
+        const px = -b.vy;
+        const py = b.vx;
+        b.x += b.vx + px * Math.sin(b.phase) * 0.22;
+        b.y += b.vy + py * Math.sin(b.phase) * 0.22;
+      } else {
+        b.x += b.vx;
+        b.y += b.vy;
+      }
+
+      trails.push({
+        x:b.x, y:b.y, color:b.color, life:10,
+        vx:rand(-0.18,0.18), vy:rand(-0.18,0.18)
+      });
+
+      let bounced = false;
+      if(b.x <= b.r || b.x >= W - b.r){
+        b.vx *= -1;
+        b.bounce--;
+        bounced = true;
+      }
+      if(b.y <= b.r || b.y >= H - b.r){
+        b.vy *= -1;
+        b.bounce--;
+        bounced = true;
+      }
+      if(bounced){
+        addParticles(b.x, b.y, b.color, 7, 2.0, 16);
+      }
+
+      const targets = b.owner.team === 'player' ? enemyTeam : playerTeam;
+      const hitTarget = alive(targets).find(t => circleHit(b, t));
+
+      if(hitTarget && hitTarget.invuln <= 0){
+        if(b.role === 'green'){
+          hitTarget.hp -= b.damage;
+          const healTarget = b.owner;
+          healTarget.hp = Math.min(healTarget.maxHp, healTarget.hp + (b.healAmount || b.damage));
+          addParticles(healTarget.x, healTarget.y, '#5cff8f', 14, 3.2, 18);
+        } else {
+          hitTarget.hp -= b.damage;
+        }
+
+        hitTarget.invuln = 5;
+        applyExplosion(b.x, b.y, b.color);
+        bullets.splice(i, 1);
+
+        const playerDead = alive(playerTeam).length === 0;
+        const enemyDead = alive(enemyTeam).length === 0;
+        if(playerDead || enemyDead){
+          endGame(enemyDead ? 'PLAYER WIN' : 'ENEMY WIN');
+        }
+        continue;
+      }
+
+      if(b.life <= 0 || b.bounce < -1){
+        bullets.splice(i, 1);
+      }
+    }
+  }
+
+  function updateParticles(){
+    for(let i = particles.length - 1; i >= 0; i--){
+      const p = particles[i];
+      p.life--;
+      p.x += p.vx;
+      p.y += p.vy;
+      p.vx *= 0.97;
+      p.vy *= 0.97;
+      if(p.life <= 0) particles.splice(i, 1);
+    }
+    for(let i = trails.length - 1; i >= 0; i--){
+      const t = trails[i];
+      t.life--;
+      t.x += t.vx;
+      t.y += t.vy;
+      if(t.life <= 0) trails.splice(i, 1);
+    }
+  }
+
+  function drawBackground(){
+    ctx.save();
+    ctx.fillStyle = '#090d14';
+    ctx.fillRect(0,0,W,H);
+
+    ctx.globalAlpha = 0.07;
+    ctx.strokeStyle = '#cfe0ff';
+    for(let x = 0; x <= W; x += 60){
+      ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke();
+    }
+    for(let y = 0; y <= H; y += 60){
+      ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke();
+    }
+
+    ctx.globalAlpha = 1;
+    const gx = W/2 + Math.sin(performance.now()*0.001)*10;
+    const gy = H/2 + Math.cos(performance.now()*0.0012)*8;
+    const g = ctx.createRadialGradient(gx, gy, 18, gx, gy, 280);
+    g.addColorStop(0, 'rgba(80,220,255,.06)');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0,0,W,H);
+    ctx.restore();
+  }
+
+  function drawFighter(f){
+    if(!f || f.hp <= 0) return;
+
+    ctx.save();
+    ctx.shadowColor = f.color;
+    ctx.shadowBlur = 22;
+    ctx.fillStyle = f.invuln > 0 ? '#ffffff' : f.color;
+    ctx.beginPath();
+    ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = 'rgba(255,255,255,.9)';
+    ctx.beginPath();
+    ctx.arc(f.x + (f.controlled ? 5 : -5), f.y - 4, 2.7, 0, Math.PI * 2);
+    ctx.fill();
+
+    if(f.dashTime > 0){
+      ctx.strokeStyle = 'rgba(255,255,255,.45)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(f.x, f.y, f.r + 6, 0, Math.PI*2);
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = 'rgba(255,255,255,.85)';
+    ctx.font = '12px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(f.controlled ? 'YOU' : f.name, f.x, f.y - 26);
+
+    ctx.restore();
+  }
+
+  function drawBullets(){
+    for(const b of bullets){
+      ctx.save();
+      ctx.shadowColor = b.color;
+      ctx.shadowBlur = b.role === 'purple' ? 20 : 16;
+      ctx.fillStyle = b.color;
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, b.r, 0, Math.PI*2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  function drawParticles(){
+    for(const t of trails){
+      const a = Math.max(0, t.life / 10);
+      ctx.save();
+      ctx.globalAlpha = a * 0.55;
+      ctx.fillStyle = t.color;
+      ctx.beginPath();
+      ctx.arc(t.x, t.y, 2.1, 0, Math.PI*2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    for(const p of particles){
+      const a = Math.max(0, p.life / p.maxLife);
+      ctx.save();
+      ctx.globalAlpha = a;
+      ctx.shadowColor = p.color;
+      ctx.shadowBlur = 10;
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI*2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  function drawUI(){
+    updateHud();
+    ctx.save();
+    ctx.fillStyle = 'rgba(255,255,255,.72)';
+    ctx.font = '14px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Move: WASD   Shoot: Space / Click   Dash: Shift', W/2, H - 14);
+    ctx.restore();
+  }
+
+  function render(){
+    drawBackground();
+    drawParticles();
+    drawBullets();
+    drawFighter(playerMain);
+    if(selectedMode === 'team' && playerTeam[1]) drawFighter(playerTeam[1]);
+    drawFighter(enemyMain);
+    if(selectedMode === 'team' && enemyTeam[1]) drawFighter(enemyTeam[1]);
+    drawUI();
+  }
+
+  function applyShake(){
+    if(shake > 0.15){
+      ctx.setTransform(1,0,0,1, rand(-shake, shake), rand(-shake, shake));
+      shake *= 0.88;
+    }else{
+      ctx.setTransform(1,0,0,1,0,0);
+      shake = 0;
+    }
+  }
+
+  function gameLoop(){
+    if(running){
+      if(!gameOver){
+        updatePlayerControlled();
+
+        const playerEnemies = enemyTeam;
+        const enemyEnemies = playerTeam;
+
+        for(const f of playerTeam){
+          if(f !== playerMain) updateAI(f, playerEnemies, playerTeam);
+        }
+        for(const f of enemyTeam){
+          updateAI(f, enemyEnemies, enemyTeam);
+        }
+
+        for(const f of playerTeam) updateFighterPhysics(f);
+        for(const f of enemyTeam) updateFighterPhysics(f);
+
+        updateBullets();
+        updateParticles();
+      } else {
+        updateBullets();
+        updateParticles();
+      }
+    }
+
+    render();
+    applyShake();
+    requestAnimationFrame(gameLoop);
+  }
+
+  document.querySelectorAll('[data-mode]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      selectedMode = btn.dataset.mode;
+      document.querySelectorAll('[data-mode]').forEach(b => b.classList.remove('modePicked'));
+      btn.classList.add('modePicked');
+
+      roleSection.style.display = 'block';
+      modeSummary.textContent = selectedMode === 'team'
+        ? '你會是 2v2 隊友模式：你和 AI 隊友一起打，敵方也會有 AI 隊友。'
+        : '你會是單挑模式：你對上一個 AI 敵人。';
+
+      updateStartButton();
+    });
+  });
+
+  document.querySelectorAll('[data-pick]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      selectedKey = btn.dataset.pick;
+      document.querySelectorAll('[data-pick]').forEach(b => b.style.outline = 'none');
+      btn.style.outline = '2px solid rgba(255,255,255,.45)';
+      updateStartButton();
+    });
+  });
+
+  startBtn.addEventListener('click', startGame);
+
+  clearBtn.addEventListener('click', () => {
+    showMenuForModeSelection();
+  });
+
+  restartBtn.addEventListener('click', () => {
+    if(!selectedMode || !selectedKey){
+      showMenuForModeSelection();
+      return;
+    }
+    resetGame();
+    tips.style.display = 'none';
+    menu.style.display = 'none';
+    running = true;
+  });
+
+  document.addEventListener('keydown', (e) => {
+    const code = e.code;
+    if(['KeyW','KeyA','KeyS','KeyD','ShiftLeft','Space'].includes(code)) e.preventDefault();
+    keys.add(code);
+  });
+  document.addEventListener('keyup', (e) => {
+    keys.delete(e.code);
+  });
+
+  canvas.addEventListener('mousemove', (e) => {
+    const r = canvas.getBoundingClientRect();
+    mouse.x = (e.clientX - r.left) * (W / r.width);
+    mouse.y = (e.clientY - r.top) * (H / r.height);
+  });
+
+  canvas.addEventListener('mousedown', () => {
+    if(running && !gameOver && playerMain && playerMain.cd <= 0 && playerMain.hp > 0){
+      shoot(playerMain, { x: mouse.x, y: mouse.y });
+    }
+  });
+
+  showMenuForModeSelection();
+  requestAnimationFrame(gameLoop);
+})();
+</script>
+</body>
+</html>
