@@ -845,7 +845,7 @@
     const dx = aimPoint.x - shooter.x, dy = aimPoint.y - shooter.y, d = Math.max(0.001, Math.hypot(dx, dy));
 
     if (shooter.role === 'zombie') {
-        let z = makeFighter({name:'小殭屍', color:'#8fbc8f', hp:0.1, speed:100, shotCd:999, dashPower:0, role:'zombie_minion'}, shooter.x + (dx/d)*35, shooter.y + (dy/d)*35, shooter.team, false, false);
+        let z = makeFighter({name:'小殭屍', color:'#8fbc8f', hp:0.8, speed:100, shotCd:999, dashPower:0, role:'zombie_minion'}, shooter.x + (dx/d)*35, shooter.y + (dy/d)*35, shooter.team, false, false);
         z.r = 10; if(shooter.team === 'player') playerTeam.push(z); else enemyTeam.push(z);
         shooter.cd = shooter.shotCdBase; addParticles(z.x, z.y, shooter.color, 8, 2.5, 14);
         
