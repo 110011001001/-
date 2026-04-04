@@ -2,8 +2,8 @@
 <html lang="zh-Hant">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Shorts Battle – 終極連線修正版</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+<title>Shorts Battle – 手機特化終極雙搖桿版</title>
 <style>
   :root{
     --bg:#05070b;
@@ -20,6 +20,7 @@
     font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans TC", sans-serif;
     color: var(--txt);
     user-select:none;
+    touch-action: none; /* 防止手機畫面的雙擊縮放和滑動 */
   }
   #stage {
     position: fixed;
@@ -41,7 +42,7 @@
     left:16px;
     top:16px;
     z-index:4;
-    min-width:270px;
+    min-width:240px;
     display:grid;
     gap:10px;
     pointer-events:none;
@@ -50,20 +51,20 @@
     background:var(--panel);
     border:1px solid var(--line);
     border-radius:14px;
-    padding:10px 12px;
-    box-shadow:0 10px 30px rgba(0,0,0,.25);
+    padding:8px 12px;
+    box-shadow:0:10px 30px rgba(0,0,0,.25);
     backdrop-filter: blur(8px);
   }
   .barLabel{
     display:flex;
     justify-content:space-between;
     align-items:center;
-    font-size:13px;
-    margin-bottom:6px;
+    font-size:12px;
+    margin-bottom:4px;
   }
   .bar{
     width:100%;
-    height:14px;
+    height:12px;
     background:rgba(255,255,255,.08);
     border-radius:999px;
     overflow:hidden;
@@ -235,7 +236,89 @@
     border-radius: 10px;
   }
 
-  @media (max-width: 820px) {
+  /* 📱 手機特化介面 (搖桿與按鈕) */
+  .mobile-only {
+    display: none;
+  }
+  
+  @media (max-width: 820px), (pointer: coarse) {
+    .mobile-only {
+      display: block;
+    }
+    #tips {
+      display: none !important; /* 手機版關閉說明框，騰出畫面空間 */
+    }
+    
+    /* 虛擬搖桿基底 */
+    .joystick-base {
+      position: fixed;
+      width: 110px;
+      height: 110px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 2px solid rgba(255, 255, 255, 0.15);
+      border-radius: 50%;
+      z-index: 5;
+      pointer-events: none;
+      transform: translate(-50%, -50%);
+      display: none;
+      backdrop-filter: blur(2px);
+    }
+    .joystick-stick {
+      position: absolute;
+      width: 44px;
+      height: 44px;
+      background: linear-gradient(135deg, rgba(255,255,255,0.6), rgba(255,255,255,0.2));
+      border-radius: 50%;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+    }
+    
+    /* 衝刺按鈕 */
+    #mobileDashBtn {
+      position: fixed;
+      bottom: 45px;
+      right: 45px;
+      width: 72px;
+      height: 72px;
+      background: linear-gradient(135deg, #ff3e62, #ff8b56);
+      border-radius: 50%;
+      z-index: 5;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 900;
+      font-size: 14px;
+      color: white;
+      box-shadow: 0 8px 20px rgba(255, 62, 98, 0.35);
+      text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+      user-select: none;
+    }
+    #mobileDashBtn:active {
+      transform: scale(0.92);
+      filter: brightness(0.9);
+    }
+
+    /* 手機版暫停按鈕 */
+    #mobilePauseBtn {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      width: 48px;
+      height: 48px;
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 14px;
+      z-index: 5;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 900;
+      color: white;
+      backdrop-filter: blur(8px);
+    }
+
     #menu {
       padding: 8px;
     }
@@ -338,6 +421,11 @@
     滑鼠瞄準。子彈2秒後自動消失。彩虹球會持續 10 秒並每 2 秒發射一次追蹤子彈。
   </div>
 </div>
+
+<div id="joyMoveBase" class="joystick-base mobile-only"><div id="joyMoveStick" class="joystick-stick"></div></div>
+<div id="joyAimBase" class="joystick-base mobile-only"><div id="joyAimStick" class="joystick-stick"></div></div>
+<div id="mobileDashBtn" class="mobile-only">DASH</div>
+<div id="mobilePauseBtn" class="mobile-only">P</div>
 
 <button id="restartBtn">重新開始</button>
 
@@ -484,6 +572,13 @@
   let lastHudSyncAt = 0;
   let pvpListeners = [];
 
+  // 📱 手機虛擬搖桿專用變數
+  let moveTouchId = null;
+  let aimTouchId = null;
+  const maxJoyRadius = 55;
+  let joystickData = { active: false, startX: 0, startY: 0, curX: 0, curY: 0 };
+  let aimJoystickData = { active: false, startX: 0, startY: 0, curX: 0, curY: 0 };
+
   function rand(min, max){ return Math.random() * (max - min) + min; }
   function clamp(v, min, max){ return Math.max(min, Math.min(max, v)); }
   function dist(x1, y1, x2, y2){ return Math.hypot(x1-x2, y1-y2); }
@@ -608,10 +703,14 @@
     document.querySelectorAll('[data-ally-pick]').forEach(btn => btn.style.outline = 'none');
     startBtn.textContent = '開始遊戲';
     updateHud();
+    
+    // 手機版判定
+    if(window.innerWidth <= 820) {
+      tips.style.display = 'none';
+    }
   }
 
   function syncMobileMenuLayout(){
-    // Pure CSS handles most of the layout, but this keeps the fixed ready button from feeling stale on rotate/resize.
     if (window.innerWidth <= 820) {
       document.body.classList.add('mobile-ui');
     } else {
@@ -984,6 +1083,18 @@
     if(keys.has('KeyW')) ay -= 1; if(keys.has('KeyS')) ay += 1;
     if(keys.has('KeyA')) ax -= 1; if(keys.has('KeyD')) ax += 1;
 
+    // 📱 手機虛擬左搖桿：融入移動向量
+    if (joystickData.active) {
+      let dx = joystickData.curX - joystickData.startX;
+      let dy = joystickData.curY - joystickData.startY;
+      let dist = Math.hypot(dx, dy);
+      if (dist > 0.001) {
+        let factor = Math.min(dist / maxJoyRadius, 1.0);
+        ax += (dx / dist) * factor;
+        ay += (dy / dist) * factor;
+      }
+    }
+
     const len = Math.max(0.001, Math.hypot(ax, ay));
     if(ax || ay){ p.vx += (ax/len) * spd * 0.34; p.vy += (ay/len) * spd * 0.34; }
 
@@ -1109,7 +1220,7 @@
       } else { b.x += b.vx; b.y += b.vy; }
 
       if (b.netBullet) {
-        b.life += 0; // 保留網路子彈原始壽命，避免過早消失
+        b.life += 0; 
       }
 
       trails.push({ x:b.x, y:b.y, color:b.color, life:10, vx:rand(-0.18,0.18), vy:rand(-0.18,0.18) });
@@ -1269,14 +1380,26 @@
       updateHud();
     }
     ctx.save(); ctx.fillStyle = 'rgba(255,255,255,.72)'; ctx.font = '14px system-ui, sans-serif'; ctx.textAlign = 'center';
-    ctx.fillText('Move: WASD   Shoot: Space / Click   Dash: Shift   Pause: P', W/2, H - 14); ctx.restore();
+    
+    // 如果是寬螢幕電腦版，才顯示鍵盤操作提示
+    if(window.innerWidth > 820) {
+      ctx.fillText('Move: WASD   Shoot: Space / Click   Dash: Shift   Pause: P', W/2, H - 14); 
+    }
+    ctx.restore();
   }
 
   function drawPauseScreen(){
     ctx.save(); ctx.fillStyle = 'rgba(0, 0, 0, 0.65)'; ctx.fillRect(0, 0, W, H);
     ctx.fillStyle = '#ffffff'; ctx.font = 'bold 50px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText('PAUSED', W/2, H/2 - 20); ctx.font = '20px system-ui, sans-serif'; ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
-    ctx.fillText('按 P 鍵繼續遊戲', W/2, H/2 + 25); ctx.fillText('按 Q 鍵退出至主選單', W/2, H/2 + 60); ctx.restore();
+    
+    if(window.innerWidth > 820) {
+      ctx.fillText('按 P 鍵繼續遊戲', W/2, H/2 + 25); 
+      ctx.fillText('按 Q 鍵退出至主選單', W/2, H/2 + 60);
+    } else {
+      ctx.fillText('點擊右上方 P 恢復', W/2, H/2 + 25);
+    }
+    ctx.restore();
   }
 
   function render(){
@@ -1351,7 +1474,7 @@
         }
       }
       updateStartButton();
-    syncMobileMenuLayout();
+      syncMobileMenuLayout();
     });
   });
 
@@ -1472,12 +1595,154 @@
     keys.add(code);
   });
   document.addEventListener('keyup', (e) => keys.delete(e.code));
+  
   canvas.addEventListener('mousemove', (e) => {
     const r = canvas.getBoundingClientRect(); mouse.x = (e.clientX - r.left) * (W / r.width); mouse.y = (e.clientY - r.top) * (H / r.height);
   });
   canvas.addEventListener('mousedown', () => {
     const myFighter = (pvpRole === 'guest') ? enemyMain : playerMain;
     if(running && !gameOver && !isPaused && myFighter && myFighter.cd <= 0 && myFighter.hp > 0) shoot(myFighter, { x: mouse.x, y: mouse.y });
+  });
+
+  // 📱 手機版專屬多點觸控控制核心
+  const joyMoveBase = document.getElementById('joyMoveBase');
+  const joyMoveStick = document.getElementById('joyMoveStick');
+  const joyAimBase = document.getElementById('joyAimBase');
+  const joyAimStick = document.getElementById('joyAimStick');
+  const mobileDashBtn = document.getElementById('mobileDashBtn');
+  const mobilePauseBtn = document.getElementById('mobilePauseBtn');
+
+  document.addEventListener('touchstart', (e) => {
+    if (!running || gameOver || isPaused) return;
+    
+    for (let touch of e.changedTouches) {
+      // 1. 左半邊點擊觸發：移動搖桿
+      if (touch.clientX < window.innerWidth / 2 && moveTouchId === null) {
+        moveTouchId = touch.identifier;
+        joystickData.active = true;
+        joystickData.startX = touch.clientX;
+        joystickData.startY = touch.clientY;
+        joystickData.curX = touch.clientX;
+        joystickData.curY = touch.clientY;
+        updateJoyUI(joyMoveBase, joyMoveStick, joystickData);
+      } 
+      // 2. 右半邊點擊觸發：發射/瞄準搖桿
+      else if (touch.clientX >= window.innerWidth / 2 && aimTouchId === null) {
+        // 先防呆：如果是點在 DASH 或 PAUSE 按鈕上，就不觸發射擊搖桿
+        const dashRect = mobileDashBtn.getBoundingClientRect();
+        if (touch.clientX >= dashRect.left && touch.clientX <= dashRect.right &&
+            touch.clientY >= dashRect.top && touch.clientY <= dashRect.bottom) {
+            continue;
+        }
+        
+        aimTouchId = touch.identifier;
+        aimJoystickData.active = true;
+        aimJoystickData.startX = touch.clientX;
+        aimJoystickData.startY = touch.clientY;
+        aimJoystickData.curX = touch.clientX;
+        aimJoystickData.curY = touch.clientY;
+        updateJoyUI(joyAimBase, joyAimStick, aimJoystickData);
+        keys.add('Space'); // 開始開火
+      }
+    }
+  });
+
+  document.addEventListener('touchmove', (e) => {
+    for (let touch of e.changedTouches) {
+      if (touch.identifier === moveTouchId) {
+        joystickData.curX = touch.clientX;
+        joystickData.curY = touch.clientY;
+        updateJoyUI(joyMoveBase, joyMoveStick, joystickData);
+      } else if (touch.identifier === aimTouchId) {
+        aimJoystickData.curX = touch.clientX;
+        aimJoystickData.curY = touch.clientY;
+        updateJoyUI(joyAimBase, joyAimStick, aimJoystickData);
+        calculateAimVector();
+      }
+    }
+  });
+
+  document.addEventListener('touchend', (e) => {
+    for (let touch of e.changedTouches) {
+      if (touch.identifier === moveTouchId) {
+        moveTouchId = null;
+        joystickData.active = false;
+        joyMoveBase.style.display = 'none';
+      } else if (touch.identifier === aimTouchId) {
+        aimTouchId = null;
+        aimJoystickData.active = false;
+        joyAimBase.style.display = 'none';
+        keys.delete('Space'); // 停止開火
+      }
+    }
+  });
+
+  document.addEventListener('touchcancel', (e) => {
+    for (let touch of e.changedTouches) {
+      if (touch.identifier === moveTouchId) {
+        moveTouchId = null;
+        joystickData.active = false;
+        joyMoveBase.style.display = 'none';
+      } else if (touch.identifier === aimTouchId) {
+        aimTouchId = null;
+        aimJoystickData.active = false;
+        joyAimBase.style.display = 'none';
+        keys.delete('Space');
+      }
+    }
+  });
+
+  function updateJoyUI(base, stick, data) {
+    if (!data.active) {
+      base.style.display = 'none';
+      return;
+    }
+    base.style.display = 'block';
+    base.style.left = data.startX + 'px';
+    base.style.top = data.startY + 'px';
+
+    let dx = data.curX - data.startX;
+    let dy = data.curY - data.startY;
+    let dist = Math.hypot(dx, dy);
+
+    if (dist > maxJoyRadius) {
+      dx = (dx / dist) * maxJoyRadius;
+      dy = (dy / dist) * maxJoyRadius;
+    }
+    stick.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+  }
+
+  // 投影瞄準方向至畫布
+  function calculateAimVector() {
+    let dx = aimJoystickData.curX - aimJoystickData.startX;
+    let dy = aimJoystickData.curY - aimJoystickData.startY;
+    let dist = Math.hypot(dx, dy);
+    
+    if (dist > 5) {
+      const p = (selectedMode === 'pvp' && pvpRole === 'guest') ? enemyMain : playerMain;
+      if (p) {
+        // 將手機拉動的角度投影得極遠，以維持直線射擊的準確度
+        const factor = 200 / dist;
+        mouse.x = p.x + dx * factor;
+        mouse.y = p.y + dy * factor;
+      }
+    }
+  }
+
+  // 手機版衝刺按鈕綁定
+  mobileDashBtn.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    keys.add('ShiftLeft');
+  });
+  mobileDashBtn.addEventListener('touchend', (e) => {
+    e.preventDefault();
+    keys.delete('ShiftLeft');
+  });
+
+  // 手機版暫停按鈕
+  mobilePauseBtn.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    if(running && !gameOver) isPaused = !isPaused;
   });
 
   document.addEventListener('visibilitychange', () => {
